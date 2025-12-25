@@ -12,7 +12,7 @@ from tts import XTTSVoiceSynthesizer
 # =====================
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-SPEAKER_WAV = os.getenv("SPEAKER_WAV", "sample.wav")
+SPEAKER_WAV = "audiofiles/" + os.getenv("SPEAKER_WAV", "sample.wav")
 
 # =====================
 # Discord
