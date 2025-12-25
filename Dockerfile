@@ -11,7 +11,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENV PATH="/root/.local/bin:/root/.cargo/bin:${PATH}"
 
-COPY main.py tts.py .python-version pyproject.toml sample.mp3 .env /app/
+COPY main.py tts.py .python-version pyproject.toml .env /app/
 
 RUN uv sync
 
