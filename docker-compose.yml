@@ -5,6 +5,8 @@ services:
     gpus: all
     volumes:
       - tts_cache:/root/.local/share/tts
+      - ./audio_files:/app/audio_files
+      - ./.env:/app/.env
     restart: always
     tty: true
     environment:
