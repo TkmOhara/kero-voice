@@ -1,0 +1,14 @@
+services:
+  kero-voice:
+    build: .
+    container_name: kero-voice
+    gpus: all
+    volumes:
+      - tts_cache:/root/.local/share/tts
+    restart: always
+    tty: true
+    environment:
+      - COQUI_TOS_AGREED=1
+
+volumes:
+  tts_cache:
