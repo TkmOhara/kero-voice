@@ -12,7 +12,8 @@ from tts import XTTSVoiceSynthesizer
 # =====================
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-SPEAKER_WAV = "audiofiles/" + os.getenv("SPEAKER_WAV", "sample.wav")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # このスクリプトファイルのあるディレクトリ
+SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", os.getenv("SPEAKER_WAV", "sample.wav"))
 
 # =====================
 # Discord
