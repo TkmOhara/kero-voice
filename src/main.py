@@ -1,11 +1,10 @@
 import os
 import asyncio
-import signal
 import tempfile
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from tts import XTTSVoiceSynthesizer
+from tts import ChatterboxVoiceSynthesizer
 
 # =====================
 # Env
@@ -13,7 +12,16 @@ from tts import XTTSVoiceSynthesizer
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # このスクリプトファイルのあるディレクトリ
-SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", os.getenv("SPEAKER_WAV", "sample.wav"))
+# 声クローン用の参照音声ファイル（オプション）
+SPEAKER_WAV_NAME = os.getenv("SPEAKER_WAV")
+SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", SPEAKER_WAV_NAME) if SPEAKER_WAV_NAME else None
+
+# =====================
+# TTS (Discord接続前に初期化)
+# =====================
+print("🔄 Loading TTS model... (this may take a while)")
+tts_synth = ChatterboxVoiceSynthesizer()
+print("✅ TTS Synthesizer initialized")
 
 # =====================
 # Discord
@@ -28,12 +36,7 @@ bot = commands.Bot(
     help_command=None
 )
 
-# =====================
-# TTS
-# =====================
-tts_synth: XTTSVoiceSynthesizer | None = None
 tts_lock = asyncio.Lock()
-
 shutdown_event = asyncio.Event()
 
 # =====================
@@ -42,9 +45,7 @@ shutdown_event = asyncio.Event()
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-    global tts_synth
-    tts_synth = XTTSVoiceSynthesizer()
-    print("✅ TTS Synthesizer initialized")
+    print("✅ Bot is ready!")
 
 # =====================
 # Commands
@@ -76,8 +77,8 @@ async def synthesize(text: str, out_path: str):
         None,
         tts_synth.synthesize_to_file,
         text,
-        SPEAKER_WAV,
         out_path,
+        SPEAKER_WAV,
         "ja"
     )
 

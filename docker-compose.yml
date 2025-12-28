@@ -2,18 +2,20 @@ services:
   kero-voice:
     build: .
     container_name: kero-voice
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
     volumes:
-      - tts_cache:/root/.local/share/tts
+      - huggingface_cache:/root/.cache/huggingface
       - uv_cache:/root/.cache/uv
-      - venv_cache:/app/.venv
       - ./src:/app/src
     restart: always
     tty: true
-    environment:
-      - COQUI_TOS_AGREED=1
 
 volumes:
-  tts_cache:
+  huggingface_cache:
   uv_cache:
-  venv_cache:

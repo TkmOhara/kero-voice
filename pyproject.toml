@@ -3,19 +3,18 @@ name = "kero-voice"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
-    "torch==2.7.0",
-    "torchvision==0.22.0",
-    "torchaudio==2.7.0",
-    "python-dotenv>=1.2.1",
     "discord-py>=2.6.4",
-    "tts>=0.22.0",
     "pynacl>=1.6.1",
-    "cutlet>=0.5.0",
-    "fugashi>=1.5.2",
-    "unidic-lite>=1.0.8",
-    "transformers==4.36.2",
+    "python-dotenv>=1.2.1",
+    "chatterbox-tts",
+    "torch>=2.7.0",
+    "torchvision>=0.22.0",
+    "torchaudio>=2.7.0",
+    "ml-dtypes>=0.5.0",
+    "numpy>=1.26.0,<2.4",
+    "setuptools<81",
 ]
 
 [[tool.uv.index]]
@@ -24,6 +23,14 @@ url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
+chatterbox-tts = { git = "https://github.com/resemble-ai/chatterbox.git" }
 torch = [{ index = "pytorch-cu128" }]
 torchvision = [{ index = "pytorch-cu128" }]
 torchaudio = [{ index = "pytorch-cu128" }]
+
+[tool.uv]
+override-dependencies = [
+    "torchaudio>=2.7.0",
+    "torch>=2.7.0",
+    "numpy>=1.26.0,<2.4",
+]
