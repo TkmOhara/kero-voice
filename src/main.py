@@ -115,16 +115,26 @@ async def on_message(message: discord.Message):
             if vc.is_playing():
                 vc.stop()
 
-            def cleanup(_):
+            # 再生完了を通知するEvent
+            play_done = asyncio.Event()
+
+            def after_play(error):
+                if error:
+                    print(f"❌ Playback error: {error}")
                 try:
                     os.remove(tmp_path)
                 except:
                     pass
+                # メインループでEventをセット
+                bot.loop.call_soon_threadsafe(play_done.set)
 
             vc.play(
                 discord.FFmpegPCMAudio(tmp_path),
-                after=cleanup
+                after=after_play
             )
+
+            # 再生完了まで待機
+            await play_done.wait()
 
         except Exception as e:
             print("❌ TTS Error:", e)
