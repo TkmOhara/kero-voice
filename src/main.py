@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import tempfile
+from dataclasses import dataclass
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -43,6 +44,79 @@ bot = commands.Bot(
 
 tts_lock = asyncio.Lock()
 shutdown_event = asyncio.Event()
+
+# =====================
+# Audio Queue System
+# =====================
+@dataclass
+class AudioItem:
+    wav_path: str
+    ready: asyncio.Event
+
+# ギルドごとの再生キュー
+audio_queues: dict[int, asyncio.Queue[AudioItem]] = {}
+playback_tasks: dict[int, asyncio.Task] = {}
+
+
+async def playback_worker(guild_id: int):
+    """キューから音声を順次再生するワーカー"""
+    queue = audio_queues[guild_id]
+
+    while not shutdown_event.is_set():
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=1.0)
+        except asyncio.TimeoutError:
+            continue
+        except asyncio.CancelledError:
+            break
+
+        try:
+            # TTS処理完了を待つ
+            await item.ready.wait()
+
+            guild = bot.get_guild(guild_id)
+            if not guild or not guild.voice_client:
+                continue
+
+            vc = guild.voice_client
+
+            # 再生完了を通知するEvent
+            play_done = asyncio.Event()
+
+            def after_play(error):
+                if error:
+                    print(f"Playback error: {error}")
+                try:
+                    os.remove(item.wav_path)
+                except:
+                    pass
+                bot.loop.call_soon_threadsafe(play_done.set)
+
+            vc.play(
+                discord.FFmpegPCMAudio(item.wav_path),
+                after=after_play
+            )
+
+            # 再生完了まで待機
+            await play_done.wait()
+
+        except Exception as e:
+            print(f"Playback worker error: {e}")
+            if os.path.exists(item.wav_path):
+                try:
+                    os.remove(item.wav_path)
+                except:
+                    pass
+        finally:
+            queue.task_done()
+
+
+def get_or_create_queue(guild_id: int) -> asyncio.Queue[AudioItem]:
+    """ギルドの再生キューを取得または作成"""
+    if guild_id not in audio_queues:
+        audio_queues[guild_id] = asyncio.Queue()
+        playback_tasks[guild_id] = asyncio.create_task(playback_worker(guild_id))
+    return audio_queues[guild_id]
 
 # =====================
 # Events
@@ -107,43 +181,29 @@ async def on_message(message: discord.Message):
     ):
         return
 
-    vc = message.guild.voice_client
     text = message.content.strip()
+    guild_id = message.guild.id
 
-    async with tts_lock:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            tmp_path = f.name
+    # 一時ファイルを作成
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp_path = f.name
 
+    # キューにアイテムを追加（TTS完了前に予約）
+    ready_event = asyncio.Event()
+    item = AudioItem(wav_path=tmp_path, ready=ready_event)
+    queue = get_or_create_queue(guild_id)
+    await queue.put(item)
+
+    # TTS処理をバックグラウンドで実行
+    async def process_tts():
         try:
-            await synthesize(text, tmp_path)
-
-            if vc.is_playing():
-                vc.stop()
-
-            # 再生完了を通知するEvent
-            play_done = asyncio.Event()
-
-            def after_play(error):
-                if error:
-                    print(f"Playback error: {error}")
-                try:
-                    os.remove(tmp_path)
-                except:
-                    pass
-                # メインループでEventをセット
-                bot.loop.call_soon_threadsafe(play_done.set)
-
-            vc.play(
-                discord.FFmpegPCMAudio(tmp_path),
-                after=after_play
-            )
-
-            # 再生完了まで待機
-            await play_done.wait()
-
+            async with tts_lock:
+                await synthesize(text, tmp_path)
+            ready_event.set()
         except Exception as e:
-            print("TTS Error:", e)
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            print(f"TTS Error: {e}")
+            ready_event.set()  # エラーでも再生ワーカーを進める
+
+    asyncio.create_task(process_tts())
 
 bot.run(TOKEN)
