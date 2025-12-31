@@ -80,8 +80,8 @@ class ChatterboxVoiceSynthesizer:
                 text,
                 audio_prompt_path=speaker_wav,
                 language_id=language,
-                exaggeration=0.7,
-                cfg_weight=0.3
+                exaggeration=0.9,
+                cfg_weight=0.1
             )
             self._save_wav(wav, out_path)
         finally:
