@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\ponz0\\\\OneDrive\\\\Desktop\\\\kero-voice\" log --oneline -10)"
+    ]
+  }
+}
