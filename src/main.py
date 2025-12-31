@@ -1,17 +1,22 @@
 import os
+import sys
 import asyncio
 import tempfile
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+
+# srcディレクトリをパスに追加（uv run ./src/main.py 対応）
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
+
 from tts import ChatterboxVoiceSynthesizer
 
 # =====================
 # Env
 # =====================
-load_dotenv()
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 TOKEN = os.getenv("TOKEN")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # このスクリプトファイルのあるディレクトリ
 # 声クローン用の参照音声ファイル（オプション）
 SPEAKER_WAV_NAME = os.getenv("SPEAKER_WAV")
 SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", SPEAKER_WAV_NAME) if SPEAKER_WAV_NAME else None
@@ -19,9 +24,9 @@ SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", SPEAKER_WAV_NAME) if SPEAKER_
 # =====================
 # TTS (Discord接続前に初期化)
 # =====================
-print("🔄 Loading TTS model... (this may take a while)")
+print("Loading TTS model... (this may take a while)")
 tts_synth = ChatterboxVoiceSynthesizer()
-print("✅ TTS Synthesizer initialized")
+print("TTS Synthesizer initialized")
 
 # =====================
 # Discord
@@ -44,8 +49,8 @@ shutdown_event = asyncio.Event()
 # =====================
 @bot.event
 async def on_ready():
-    print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-    print("✅ Bot is ready!")
+    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    print("Bot is ready!")
 
 # =====================
 # Commands
@@ -53,7 +58,7 @@ async def on_ready():
 @bot.command()
 async def join(ctx):
     if ctx.author.voice is None:
-        return await ctx.send("🔊 VCに入ってください")
+        return await ctx.send("VCに入ってください")
 
     if ctx.voice_client is None:
         await ctx.author.voice.channel.connect()
@@ -64,9 +69,9 @@ async def leave(ctx):
     vc = ctx.guild.voice_client
     if vc:
         await vc.disconnect()
-        await ctx.send("👋 VCから切断しました")
+        await ctx.send("VCから切断しました")
     else:
-        await ctx.send("ℹ VCにいません")
+        await ctx.send("VCにいません")
 
 # =====================
 # TTS executor
@@ -120,7 +125,7 @@ async def on_message(message: discord.Message):
 
             def after_play(error):
                 if error:
-                    print(f"❌ Playback error: {error}")
+                    print(f"Playback error: {error}")
                 try:
                     os.remove(tmp_path)
                 except:
@@ -137,7 +142,7 @@ async def on_message(message: discord.Message):
             await play_done.wait()
 
         except Exception as e:
-            print("❌ TTS Error:", e)
+            print("TTS Error:", e)
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
