@@ -162,15 +162,27 @@ async def help(ctx):
 
 @bot.command()
 async def join(ctx):
+    """ボイスチャンネルに参加"""
     if ctx.author.voice is None:
         return await ctx.send("VCに入ってください")
 
+    target_channel = ctx.author.voice.channel
+
     if ctx.voice_client is None:
-        await ctx.author.voice.channel.connect()
+        # 未接続の場合は接続
+        await target_channel.connect()
+        await ctx.send(f"{target_channel.name} に参加しました")
+    elif ctx.voice_client.channel != target_channel:
+        # 別チャンネルにいる場合は移動
+        await ctx.voice_client.move_to(target_channel)
+        await ctx.send(f"{target_channel.name} に移動しました")
+    else:
+        await ctx.send("既に同じVCにいます")
 
 
 @bot.command()
 async def leave(ctx):
+    """ボイスチャンネルから退出"""
     vc = ctx.guild.voice_client
     if vc:
         await vc.disconnect()
