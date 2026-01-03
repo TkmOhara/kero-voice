@@ -32,8 +32,8 @@ class ChatterboxVoiceSynthesizer:
                 text,
                 audio_prompt_path=speaker_wav,
                 language_id=language,
-                exaggeration=0.9,
-                cfg_weight=0.1,
+                exaggeration=0.5,
+                cfg_weight=0.5,
             )
 
         # Tensor -> int16 WAV
