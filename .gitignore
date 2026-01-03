@@ -12,3 +12,4 @@ wheels/
 
 src/audiofiles/*
 !src/audiofiles/.gitkeep
+src/*.db

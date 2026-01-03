@@ -5,6 +5,7 @@ import tempfile
 from dataclasses import dataclass
 import discord
 from discord.ext import commands
+from discord.ui import Button, View
 from dotenv import load_dotenv
 
 # srcディレクトリをパスに追加（uv run ./src/main.py 対応）
@@ -12,6 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from tts import ChatterboxVoiceSynthesizer
+from db import Database
 
 # =====================
 # Env
@@ -21,6 +23,13 @@ TOKEN = os.getenv("TOKEN")
 # 声クローン用の参照音声ファイル（オプション）
 SPEAKER_WAV_NAME = os.getenv("SPEAKER_WAV")
 SPEAKER_WAV = os.path.join(BASE_DIR, "audiofiles", SPEAKER_WAV_NAME) if SPEAKER_WAV_NAME else None
+AUDIOFILES_DIR = os.path.join(BASE_DIR, "audiofiles")
+
+# =====================
+# Database
+# =====================
+db = Database(os.path.join(BASE_DIR, "kero_voice.db"))
+db.refresh_speakers(AUDIOFILES_DIR)
 
 # =====================
 # TTS (Discord接続前に初期化)
@@ -148,6 +157,16 @@ async def help(ctx):
         inline=False
     )
     embed.add_field(
+        name="!speakers",
+        value="利用可能な話者一覧を表示します",
+        inline=False
+    )
+    embed.add_field(
+        name="!myvoice",
+        value="現在設定されている話者を確認します",
+        inline=False
+    )
+    embed.add_field(
         name="!help",
         value="このヘルプを表示します",
         inline=False
@@ -190,17 +209,85 @@ async def leave(ctx):
     else:
         await ctx.send("VCにいません")
 
+
+# =====================
+# Speaker Selection UI
+# =====================
+class SpeakerSelectView(View):
+    """話者選択用のボタンビュー"""
+
+    def __init__(self, speakers: list[dict], timeout=60):
+        super().__init__(timeout=timeout)
+        for speaker in speakers[:25]:  # Discordの制限: 最大25ボタン
+            # ファイル名から拡張子を除去して短縮
+            label = os.path.splitext(speaker["filename"])[0][:20]
+            button = Button(
+                label=label,
+                style=discord.ButtonStyle.primary,
+                custom_id=f"speaker_{speaker['id']}"
+            )
+            button.callback = self.create_callback(speaker)
+            self.add_item(button)
+
+    def create_callback(self, speaker: dict):
+        async def callback(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            if db.set_user_speaker(user_id, speaker["id"]):
+                await interaction.response.send_message(
+                    f"話者を **{speaker['filename']}** に設定しました",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "設定に失敗しました",
+                    ephemeral=True
+                )
+        return callback
+
+
+def chunk_list(lst: list, n: int) -> list[list]:
+    """リストをn個ずつに分割"""
+    return [lst[i:i + n] for i in range(0, len(lst), n)]
+
+
+@bot.command()
+async def speakers(ctx):
+    """利用可能な話者一覧を表示（ボタンで選択）"""
+    speaker_list = db.get_speakers()
+
+    if not speaker_list:
+        return await ctx.send("話者が登録されていません。audiofilesフォルダに音声ファイルを追加してください。")
+
+    # 25個ずつに分割してViewを作成
+    blocks = chunk_list(speaker_list, 25)
+    for block in blocks:
+        view = SpeakerSelectView(block)
+        await ctx.send("話者を選択してください:", view=view)
+
+
+@bot.command()
+async def myvoice(ctx):
+    """現在の話者設定を確認"""
+    user_id = ctx.author.id
+    speaker = db.get_user_speaker(user_id)
+
+    if speaker:
+        await ctx.send(f"現在の話者: {speaker['filename']}", delete_after=10)
+    else:
+        await ctx.send("話者が設定されていません。デフォルトの話者を使用します。", delete_after=10)
+
+
 # =====================
 # TTS executor
 # =====================
-async def synthesize(text: str, out_path: str):
+async def synthesize(text: str, out_path: str, speaker_wav: str | None = None):
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(
         None,
         tts_synth.synthesize_to_file,
         text,
         out_path,
-        SPEAKER_WAV,
+        speaker_wav or SPEAKER_WAV,
         "ja"
     )
 
@@ -226,8 +313,13 @@ async def on_message(message: discord.Message):
 
     text = message.content.strip()
     guild_id = message.guild.id
+    user_id = message.author.id
 
-    # 文字数制限（100文字）
+    # ユーザーの話者設定を取得
+    user_speaker = db.get_user_speaker(user_id)
+    speaker_wav = user_speaker["filepath"] if user_speaker else None
+
+    # 文字数制限（300文字）
     MAX_MESSAGE_LENGTH = 300
     if len(text) > MAX_MESSAGE_LENGTH:
         text = "This message is too long"
@@ -246,7 +338,7 @@ async def on_message(message: discord.Message):
     async def process_tts():
         try:
             async with tts_lock:
-                await synthesize(text, tmp_path)
+                await synthesize(text, tmp_path, speaker_wav)
             ready_event.set()
         except Exception as e:
             print(f"TTS Error: {e}")
