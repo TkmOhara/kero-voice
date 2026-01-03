@@ -130,6 +130,37 @@ async def on_ready():
 # Commands
 # =====================
 @bot.command()
+async def help(ctx):
+    """ヘルプを表示"""
+    embed = discord.Embed(
+        title="kero-voice Bot",
+        description="テキストを音声に変換してVCで再生するBotです",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="!join",
+        value="Botをあなたのボイスチャンネルに参加させます",
+        inline=False
+    )
+    embed.add_field(
+        name="!leave",
+        value="Botをボイスチャンネルから切断します",
+        inline=False
+    )
+    embed.add_field(
+        name="!help",
+        value="このヘルプを表示します",
+        inline=False
+    )
+    embed.add_field(
+        name="使い方",
+        value="Botがボイスチャンネルに参加中、テキストチャンネルにメッセージを送ると音声で読み上げます",
+        inline=False
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command()
 async def join(ctx):
     if ctx.author.voice is None:
         return await ctx.send("VCに入ってください")
