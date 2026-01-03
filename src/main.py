@@ -227,6 +227,11 @@ async def on_message(message: discord.Message):
     text = message.content.strip()
     guild_id = message.guild.id
 
+    # 文字数制限（100文字）
+    MAX_MESSAGE_LENGTH = 300
+    if len(text) > MAX_MESSAGE_LENGTH:
+        text = "This message is too long"
+
     # 一時ファイルを作成
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp_path = f.name
