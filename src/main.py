@@ -135,6 +135,33 @@ async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("Bot is ready!")
 
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    """ボイスチャンネルに誰もいなくなったら自動で退出"""
+    # ボイスチャンネルから離脱したイベントだけを見る
+    if before.channel is None or after.channel == before.channel:
+        return
+
+    channel = before.channel
+
+    # このギルドにBotが接続しているか？
+    if channel.guild.voice_client is None:
+        return
+
+    bot_voice = channel.guild.voice_client
+
+    # Botが現在いるチャンネルと一致しているか？
+    if bot_voice.channel != channel:
+        return
+
+    # 残っているメンバーに人間がいるかチェック
+    humans = [m for m in channel.members if not m.bot]
+
+    if len(humans) == 0:
+        await bot_voice.disconnect()
+        print("誰もいなくなったのでBOTは退出しました。")
+
 # =====================
 # Commands
 # =====================
