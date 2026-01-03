@@ -243,8 +243,8 @@ async def leave(ctx):
 class SpeakerSelectView(View):
     """話者選択用のボタンビュー"""
 
-    def __init__(self, speakers: list[dict], timeout=60):
-        super().__init__(timeout=timeout)
+    def __init__(self, speakers: list[dict]):
+        super().__init__(timeout=None)  # 同一インスタンス中は有効
         for speaker in speakers[:25]:  # Discordの制限: 最大25ボタン
             # ファイル名から拡張子を除去して短縮
             label = os.path.splitext(speaker["filename"])[0][:20]
@@ -253,13 +253,14 @@ class SpeakerSelectView(View):
                 style=discord.ButtonStyle.primary,
                 custom_id=f"speaker_{speaker['id']}"
             )
-            button.callback = self.create_callback(speaker)
+            button.callback = self.create_callback(speaker["id"])
             self.add_item(button)
 
-    def create_callback(self, speaker: dict):
+    def create_callback(self, speaker_id: int):
         async def callback(interaction: discord.Interaction):
             user_id = interaction.user.id
-            if db.set_user_speaker(user_id, speaker["id"]):
+            speaker = db.get_speaker_by_id(speaker_id)
+            if speaker and db.set_user_speaker(user_id, speaker_id):
                 await interaction.response.send_message(
                     f"話者を **{speaker['filename']}** に設定しました",
                     ephemeral=True
