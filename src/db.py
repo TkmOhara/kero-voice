@@ -1,5 +1,4 @@
 import sqlite3
-from pathlib import Path
 from contextlib import contextmanager
 
 
@@ -28,10 +27,11 @@ class Database:
             cursor = conn.cursor()
 
             # speakersテーブル（音声ファイル一覧）
+            # name: 表示名（ボタンラベル）、filepath: 実際のファイルパス
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS speakers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL UNIQUE,
                     filepath TEXT NOT NULL
                 )
             """)
@@ -45,58 +45,11 @@ class Database:
                 )
             """)
 
-    def refresh_speakers(self, audiofiles_dir: str):
-        """audiofilesディレクトリからスピーカー一覧を更新（新規ファイルのみ追加）"""
-        audio_extensions = {".mp3", ".wav"}
-        audiofiles_path = Path(audiofiles_dir)
-
-        # 音声ファイル一覧を取得
-        audio_files = []
-        if audiofiles_path.exists():
-            for f in audiofiles_path.iterdir():
-                if f.is_file() and f.suffix.lower() in audio_extensions:
-                    audio_files.append((f.name, str(f.absolute())))
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-
-            # 既存のファイル名を取得
-            cursor.execute("SELECT filename FROM speakers")
-            existing_filenames = {row[0] for row in cursor.fetchall()}
-
-            # 新規ファイルのみ挿入
-            new_files = [
-                (filename, filepath)
-                for filename, filepath in audio_files
-                if filename not in existing_filenames
-            ]
-
-            if new_files:
-                cursor.executemany(
-                    "INSERT INTO speakers (filename, filepath) VALUES (?, ?)",
-                    new_files
-                )
-
-            # ディレクトリに存在しないファイルを削除
-            current_filenames = {filename for filename, _ in audio_files}
-            removed_filenames = existing_filenames - current_filenames
-            if removed_filenames:
-                cursor.executemany(
-                    "DELETE FROM speakers WHERE filename = ?",
-                    [(fn,) for fn in removed_filenames]
-                )
-
-        total = len(audio_files)
-        added = len(new_files)
-        removed = len(removed_filenames) if 'removed_filenames' in dir() else 0
-        print(f"Speakers refreshed: {total} files (added: {added}, removed: {removed})")
-        return total
-
     def get_speakers(self) -> list[dict]:
         """スピーカー一覧を取得"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, filename, filepath FROM speakers ORDER BY filename")
+            cursor.execute("SELECT id, name, filepath FROM speakers ORDER BY name")
             return [dict(row) for row in cursor.fetchall()]
 
     def get_speaker_by_id(self, speaker_id: int) -> dict | None:
@@ -104,7 +57,7 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, filename, filepath FROM speakers WHERE id = ?",
+                "SELECT id, name, filepath FROM speakers WHERE id = ?",
                 (speaker_id,)
             )
             row = cursor.fetchone()
@@ -131,7 +84,7 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT s.id, s.filename, s.filepath
+                SELECT s.id, s.name, s.filepath
                 FROM user_speakers us
                 JOIN speakers s ON us.speaker_id = s.id
                 WHERE us.user_id = ?
@@ -144,4 +97,37 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM user_speakers WHERE user_id = ?", (user_id,))
+            return cursor.rowcount > 0
+
+    def add_speaker(self, name: str, filepath: str) -> int | None:
+        """スピーカーを追加し、IDを返す"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "INSERT INTO speakers (name, filepath) VALUES (?, ?)",
+                    (name, filepath)
+                )
+                return cursor.lastrowid
+            except sqlite3.IntegrityError:
+                return None  # 重複
+
+    def get_speaker_by_name(self, name: str) -> dict | None:
+        """名前でスピーカーを取得"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, name, filepath FROM speakers WHERE name = ?",
+                (name,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def delete_speaker(self, speaker_id: int) -> bool:
+        """スピーカーを削除"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # 関連するuser_speakersも削除
+            cursor.execute("DELETE FROM user_speakers WHERE speaker_id = ?", (speaker_id,))
+            cursor.execute("DELETE FROM speakers WHERE id = ?", (speaker_id,))
             return cursor.rowcount > 0

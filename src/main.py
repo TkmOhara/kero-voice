@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import tempfile
+import uuid
 from dataclasses import dataclass
 import discord
 from discord.ext import commands
@@ -30,7 +31,6 @@ AUDIOFILES_DIR = os.path.join(BASE_DIR, "audiofiles")
 # Database
 # =====================
 db = Database(os.path.join(BASE_DIR, "kero_voice.db"))
-db.refresh_speakers(AUDIOFILES_DIR)
 
 # =====================
 # TTS (Discord接続前に初期化)
@@ -195,8 +195,18 @@ async def help(ctx):
         inline=False
     )
     embed.add_field(
+        name="!sr <name>",
+        value="話者ファイルを登録（名前を指定して音声ファイルを添付）",
+        inline=False
+    )
+    embed.add_field(
+        name="!sd <name>",
+        value="話者ファイルを削除",
+        inline=False
+    )
+    embed.add_field(
         name="!status",
-        value="サーバーのシステムステータスを表示します（次のメッセージまで1秒ごとに更新）",
+        value="システムステータスを表示（1分間自動更新）",
         inline=False
     )
     embed.add_field(
@@ -244,6 +254,85 @@ async def leave(ctx):
 
 
 # =====================
+# Speaker File Management
+# =====================
+ALLOWED_EXTENSIONS = {".mp3", ".wav"}
+
+
+@bot.command()
+async def sr(ctx, name: str = None):
+    """話者ファイルを登録 (!sr <名前> + ファイル添付)"""
+    # 名前のチェック
+    if not name:
+        return await ctx.send("使い方: `!sr <名前>` + 音声ファイル添付", delete_after=10)
+
+    # 名前の長さチェック
+    if len(name) > 8:
+        return await ctx.send("名前は8文字以下にしてください", delete_after=10)
+
+    # 添付ファイルのチェック
+    if not ctx.message.attachments:
+        return await ctx.send("音声ファイルを添付してください（.mp3 または .wav）", delete_after=10)
+
+    attachment = ctx.message.attachments[0]
+    original_ext = os.path.splitext(attachment.filename)[1].lower()
+
+    # 拡張子チェック
+    if original_ext not in ALLOWED_EXTENSIONS:
+        return await ctx.send(f"対応していない形式です。対応形式: {', '.join(ALLOWED_EXTENSIONS)}", delete_after=10)
+
+    # 重複チェック（名前で）
+    if db.get_speaker_by_name(name):
+        return await ctx.send(f"**{name}** は既に登録されています", delete_after=10)
+
+    # ファイル名をランダムなIDに変換（特殊文字対策）
+    random_filename = f"{uuid.uuid4().hex}{original_ext}"
+    filepath = os.path.join(AUDIOFILES_DIR, random_filename)
+
+    # ファイル保存
+    try:
+        await attachment.save(filepath)
+    except Exception as e:
+        return await ctx.send(f"ファイルの保存に失敗しました: {e}", delete_after=10)
+
+    # DB登録（name=表示名, filepath=実際のファイルパス）
+    speaker_id = db.add_speaker(name, filepath)
+    if speaker_id:
+        await ctx.send(f"**{name}** を登録しました", delete_after=10)
+    else:
+        # 保存したファイルを削除
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        await ctx.send("データベースへの登録に失敗しました", delete_after=10)
+
+
+@bot.command()
+async def sd(ctx, name: str = None):
+    """話者ファイルを削除 (!sd <名前>)"""
+    if not name:
+        return await ctx.send("使い方: `!sd <名前>`", delete_after=10)
+
+    # DB検索（名前で）
+    speaker = db.get_speaker_by_name(name)
+    if not speaker:
+        return await ctx.send(f"**{name}** は登録されていません", delete_after=10)
+
+    # ファイル削除
+    filepath = speaker["filepath"]
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except Exception as e:
+            return await ctx.send(f"ファイルの削除に失敗しました: {e}", delete_after=10)
+
+    # DB削除
+    if db.delete_speaker(speaker["id"]):
+        await ctx.send(f"**{name}** を削除しました", delete_after=10)
+    else:
+        await ctx.send("データベースからの削除に失敗しました", delete_after=10)
+
+
+# =====================
 # Speaker Selection UI
 # =====================
 class SpeakerSelectView(View):
@@ -252,8 +341,7 @@ class SpeakerSelectView(View):
     def __init__(self, speakers: list[dict]):
         super().__init__(timeout=None)  # 同一インスタンス中は有効
         for speaker in speakers[:25]:  # Discordの制限: 最大25ボタン
-            # ファイル名から拡張子を除去して短縮
-            label = os.path.splitext(speaker["filename"])[0][:20]
+            label = speaker["name"][:20]
             button = Button(
                 label=label,
                 style=discord.ButtonStyle.primary,
@@ -268,7 +356,7 @@ class SpeakerSelectView(View):
             speaker = db.get_speaker_by_id(speaker_id)
             if speaker and db.set_user_speaker(user_id, speaker_id):
                 await interaction.response.send_message(
-                    f"話者を **{speaker['filename']}** に設定しました",
+                    f"話者を **{speaker['name']}** に設定しました",
                     ephemeral=True
                 )
             else:
@@ -290,7 +378,7 @@ async def speakers(ctx):
     speaker_list = db.get_speakers()
 
     if not speaker_list:
-        return await ctx.send("話者が登録されていません。audiofilesフォルダに音声ファイルを追加してください。")
+        return await ctx.send("話者が登録されていません")
 
     # 25個ずつに分割してViewを作成
     blocks = chunk_list(speaker_list, 25)
@@ -306,7 +394,7 @@ async def myvoice(ctx):
     speaker = db.get_user_speaker(user_id)
 
     if speaker:
-        await ctx.send(f"現在の話者: {speaker['filename']}", delete_after=10)
+        await ctx.send(f"現在の話者: **{speaker['name']}**", delete_after=10)
     else:
         await ctx.send("話者が設定されていません。デフォルトの話者を使用します。", delete_after=10)
 
