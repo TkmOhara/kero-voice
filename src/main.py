@@ -14,6 +14,7 @@ sys.path.insert(0, BASE_DIR)
 
 from tts import ChatterboxVoiceSynthesizer
 from db import Database
+from system_monitor import SystemMonitor
 
 # =====================
 # Env
@@ -194,6 +195,11 @@ async def help(ctx):
         inline=False
     )
     embed.add_field(
+        name="!status",
+        value="サーバーのシステムステータスを表示します（次のメッセージまで1秒ごとに更新）",
+        inline=False
+    )
+    embed.add_field(
         name="!help",
         value="このヘルプを表示します",
         inline=False
@@ -303,6 +309,45 @@ async def myvoice(ctx):
         await ctx.send(f"現在の話者: {speaker['filename']}", delete_after=10)
     else:
         await ctx.send("話者が設定されていません。デフォルトの話者を使用します。", delete_after=10)
+
+
+# アクティブなステータス更新タスクを管理（ギルドIDをキーに）
+active_status_tasks: dict[int, asyncio.Task] = {}
+
+
+@bot.command()
+async def status(ctx):
+    """システムステータスを表示（1分間自動更新、再実行で停止）"""
+    guild_id = ctx.guild.id
+
+    # 既存のタスクがあれば停止
+    if guild_id in active_status_tasks:
+        active_status_tasks[guild_id].cancel()
+        del active_status_tasks[guild_id]
+        return
+
+    # 初回メッセージ送信
+    status_msg = SystemMonitor.generate_status_message()
+    message = await ctx.send(status_msg)
+
+    async def update_status():
+        """1分間、1秒ごとにステータスを更新"""
+        try:
+            for _ in range(60):  # 60秒間
+                await asyncio.sleep(1)
+                status_msg = SystemMonitor.generate_status_message()
+                await message.edit(content=status_msg)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Status update error: {e}")
+        finally:
+            # 完了したらタスクを削除
+            if guild_id in active_status_tasks:
+                del active_status_tasks[guild_id]
+
+    # タスクを開始して保存
+    active_status_tasks[guild_id] = asyncio.create_task(update_status())
 
 
 # =====================

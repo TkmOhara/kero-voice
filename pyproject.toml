@@ -15,6 +15,7 @@ dependencies = [
     "ml-dtypes>=0.5.0",
     "numpy>=1.26.0,<2.4",
     "setuptools<81",
+    "psutil>=6.1.1",
 ]
 
 [[tool.uv.index]]

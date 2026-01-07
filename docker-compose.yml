@@ -2,6 +2,7 @@ services:
   kero-voice:
     build: .
     container_name: kero-voice
+    pid: host
     deploy:
       resources:
         reservations:
